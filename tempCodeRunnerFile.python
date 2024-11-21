@@ -1,28 +1,191 @@
-def is_perfect_number(n):
-    """
-    Check if a number is a perfect number.
-    A perfect number is a number that is equal to the sum of its proper divisors (excluding itself).
-    """
-    if n < 1:
-        return False  
-    
-    divisors_sum = sum(i for i in range(1, n) if n % i == 0)
-    
-    return divisors_sum == n
+import sqlite3
 
-def main():
-    try:
-        num = int(input("Enter a positive integer: "))
-        
-        if num <= 0:
-            print("Please enter a positive integer.")
-        else:
-            if is_perfect_number(num):
-                print(f"{num} is a perfect number.")
+# Apartment Class
+class Apartment:
+    def __init__(self, name, price, location, amenities):
+        self.name = name
+        self.price = price
+        self.location = location
+        self.amenities = amenities
+
+    def __str__(self):
+        return (f"{self.name}\n"
+                f"Location: {self.location}\n"
+                f"Price: ₱{self.price} per month\n"
+                f"Amenities: {', '.join(self.amenities)}")
+
+
+# ApartmentFinder Class
+class ApartmentFinder:
+    def __init__(self, db_name="apartments.db"):
+        self.db_name = db_name
+        self._initialize_database()
+
+    def _initialize_database(self):
+        """Creates the database and the apartments table if they don't already exist."""
+        with sqlite3.connect(self.db_name) as conn:
+            cursor = conn.cursor()
+            cursor.execute(''' 
+                CREATE TABLE IF NOT EXISTS apartments (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    name TEXT NOT NULL,
+                    price REAL NOT NULL,
+                    location TEXT NOT NULL,
+                    amenities TEXT NOT NULL
+                )
+            ''')
+
+            # Create reservations table
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS reservations (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    apartment_id INTEGER NOT NULL,
+                    user_name TEXT NOT NULL,
+                    status TEXT NOT NULL DEFAULT 'reserved',
+                    FOREIGN KEY(apartment_id) REFERENCES apartments(id)
+                )
+            ''')
+
+            conn.commit()
+
+    def add_apartment(self, apartment):
+        """Adds an apartment to the database."""
+        with sqlite3.connect(self.db_name) as conn:
+            cursor = conn.cursor()
+            cursor.execute(''' 
+                INSERT INTO apartments (name, price, location, amenities)
+                VALUES (?, ?, ?, ?)
+            ''', (apartment.name, apartment.price, apartment.location, ','.join(apartment.amenities)))
+            conn.commit()
+
+    def search_by_budget(self, min_price, max_price):
+        """Searches for apartments within a budget range."""
+        with sqlite3.connect(self.db_name) as conn:
+            cursor = conn.cursor()
+            cursor.execute(''' 
+                SELECT id, name, price, location, amenities 
+                FROM apartments 
+                WHERE price BETWEEN ? AND ?
+            ''', (min_price, max_price))
+            rows = cursor.fetchall()
+        return [Apartment(row[1], row[2], row[3], row[4].split(',')) for row in rows]
+
+    def search_by_location(self, location):
+        """Searches for apartments by location."""
+        with sqlite3.connect(self.db_name) as conn:
+            cursor = conn.cursor()
+            cursor.execute(''' 
+                SELECT id, name, price, location, amenities 
+                FROM apartments 
+                WHERE location LIKE ?
+            ''', ('%' + location + '%',))
+            rows = cursor.fetchall()
+        return [Apartment(row[1], row[2], row[3], row[4].split(',')) for row in rows]
+
+    def search_by_amenities(self, desired_amenities):
+        """Searches for apartments by amenities."""
+        with sqlite3.connect(self.db_name) as conn:
+            cursor = conn.cursor()
+            cursor.execute(''' 
+                SELECT id, name, price, location, amenities 
+                FROM apartments
+            ''')
+            rows = cursor.fetchall()
+        results = []
+        for row in rows:
+            amenities = row[4].split(',')
+            if all(amenity.strip() in amenities for amenity in desired_amenities):
+                results.append(Apartment(row[1], row[2], row[3], amenities))
+        return results
+
+    def make_reservation(self, apartment_id, user_name):
+        """Makes a reservation for an apartment."""
+        with sqlite3.connect(self.db_name) as conn:
+            cursor = conn.cursor()
+            # Check if the apartment is already reserved
+            cursor.execute('''
+                SELECT * FROM reservations WHERE apartment_id = ? AND status = 'reserved'
+            ''', (apartment_id,))
+            reservation = cursor.fetchone()
+            
+            if reservation:
+                print("This apartment is already reserved.")
             else:
-                print(f"{num} is not a perfect number.")
-    except ValueError:
-        print("Invalid input. Please enter a valid positive integer.")
+                # Insert the reservation
+                cursor.execute('''
+                    INSERT INTO reservations (apartment_id, user_name, status)
+                    VALUES (?, ?, ?)
+                ''', (apartment_id, user_name, 'reserved'))
+                conn.commit()
+                print(f"Reservation successful for {user_name} at apartment {apartment_id}.")
 
-if __name__ == "__main__":
-    main()
+    def cancel_reservation(self, apartment_id, user_name):
+        """Cancels a reservation for an apartment."""
+        with sqlite3.connect(self.db_name) as conn:
+            cursor = conn.cursor()
+            cursor.execute('''
+                SELECT * FROM reservations WHERE apartment_id = ? AND user_name = ? AND status = 'reserved'
+            ''', (apartment_id, user_name))
+            reservation = cursor.fetchone()
+
+            if reservation:
+                cursor.execute('''
+                    UPDATE reservations SET status = 'cancelled' 
+                    WHERE apartment_id = ? AND user_name = ? AND status = 'reserved'
+                ''', (apartment_id, user_name))
+                conn.commit()
+                print(f"Reservation for {user_name} at apartment {apartment_id} has been cancelled.")
+            else:
+                print("No active reservation found for this user and apartment.")
+
+
+# Initialize apartments in the database with prices >= ₱5000
+def initialize_apartments(finder):
+    apartments = [
+        Apartment("Agoncillo, Batangas", 5500, "Agoncillo, Batangas", ["Gym", "Parking"]),
+        Apartment("Alitagtag", 5200, "Alitagtag", ["Parking"]),
+        Apartment("Balayan", 5800, "Balayan", ["Gym", "Pool"]),
+        Apartment("Balete, Batangas", 6000, "Balete, Batangas", ["Pet Friendly", "Parking"]),
+        Apartment("Bauan", 6500, "Bauan", ["Pool", "Pet Friendly"]),
+        Apartment("Calaca", 5700, "Calaca", ["Parking"]),
+        Apartment("Calatagan", 6900, "Calatagan", ["Pool", "Gym"]),
+        Apartment("Cuenca, Batangas", 5300, "Cuenca, Batangas", ["Pet Friendly"]),
+        Apartment("Ibaan", 5500, "Ibaan", ["Gym", "Parking"]),
+        Apartment("Laurel, Batangas", 7000, "Laurel, Batangas", ["Pool", "Pet Friendly"]),
+        Apartment("Lemery, Batangas", 5700, "Lemery, Batangas", ["Parking"]),
+        Apartment("Lian, Batangas", 6000, "Lian, Batangas", ["Gym", "Pet Friendly"]),
+        Apartment("Lobo, Batangas", 5200, "Lobo, Batangas", ["Parking"]),
+        Apartment("Mabini, Batangas", 6500, "Mabini, Batangas", ["Pet Friendly", "Pool"]),
+        Apartment("Malvar", 5400, "Malvar", ["Gym"]),
+        Apartment("Mataasnakahoy", 6900, "Mataasnakahoy", ["Parking"]),
+        Apartment("Nasugbu", 7100, "Nasugbu", ["Pool", "Pet Friendly"]),
+        Apartment("Padre Garcia", 6000, "Padre Garcia", ["Parking", "Gym"]),
+        Apartment("Rosario, Batangas", 5700, "Rosario, Batangas", ["Pet Friendly", "Pool"]),
+        Apartment("San Jose, Batangas", 5300, "San Jose, Batangas", ["Parking"]),
+        Apartment("San Juan, Batangas", 6500, "San Juan, Batangas", ["Gym", "Pet Friendly"]),
+        Apartment("San Luis, Batangas", 5500, "San Luis, Batangas", ["Parking", "Pool"]),
+        Apartment("San Nicolas, Batangas", 5700, "San Nicolas, Batangas", ["Pet Friendly"]),
+        Apartment("San Pascual, Batangas", 6000, "San Pascual, Batangas", ["Pool", "Gym"]),
+        Apartment("Santa Teresita, Batangas", 5400, "Santa Teresita, Batangas", ["Parking"]),
+        Apartment("Santo Tomas, Batangas", 5500, "Santo Tomas, Batangas", ["Pool"]),
+        Apartment("Taal, Batangas", 6500, "Taal, Batangas", ["Gym", "Parking"]),
+        Apartment("Talisay, Batangas", 6900, "Talisay, Batangas", ["Pool", "Pet Friendly"]),
+        Apartment("Taysan", 5200, "Taysan", ["Pet Friendly"]),
+        Apartment("Tingloy", 5300, "Tingloy", ["Parking"]),
+        Apartment("Tuy, Batangas", 6000, "Tuy, Batangas", ["Gym", "Parking"])
+    ]
+    
+    for apartment in apartments:
+        finder.add_apartment(apartment)
+
+
+# Main Program
+def main():
+    finder = ApartmentFinder()
+    # Initialize apartments with prices greater than ₱5000
+    initialize_apartments(finder)
+
+    print("Welcome to APT: Your Apartment Finding System!")
+    print("“Just meet me at the APT”")
+
+    while
