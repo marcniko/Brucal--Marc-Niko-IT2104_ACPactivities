@@ -1,4 +1,4 @@
-<img width="990" height="500" scr="https://github.com/marcniko/Brucal--Marc-Niko-IT2104_ACPactivities/blob/main/Final%20Project/logo.png">
+<img width="990" height="500" scr="">
 
 
 ### **I. A Brief Project Overview**  
