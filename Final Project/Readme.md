@@ -1,4 +1,6 @@
-<img width="990" height="500" scr="">
+<div align="center">
+<img src = "https://github.com/user-attachments/assets/c5b3a24c-bafa-470c-b509-6231bcc2c132" alt="Alt text" />
+</div>
 
 
 ### **I. A Brief Project Overview**  
